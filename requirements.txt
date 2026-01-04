@@ -1,0 +1,15 @@
+# Core data/EDA
+pandas
+numpy
+matplotlib
+seaborn
+
+# Modeling / utilities
+scikit-learn
+faiss-cpu
+chromadb
+pytest
+
+# UI options
+streamlit
+gradio
