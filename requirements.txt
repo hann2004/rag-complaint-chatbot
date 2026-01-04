@@ -8,6 +8,9 @@ seaborn
 scikit-learn
 faiss-cpu
 chromadb
+sentence-transformers
+langchain-text-splitters
+progressbar2
 pytest
 
 # UI options
