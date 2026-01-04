@@ -116,17 +116,22 @@ def build_chunks(df: pd.DataFrame, text_col: str = "Consumer complaint narrative
         total = len(parts)
         for idx, part in enumerate(parts):
             chunk_id = str(uuid.uuid4())
+            def safe_str(val):
+                return "" if val is None or (isinstance(val, float) and math.isnan(val)) else str(val)
+
+            metadata = {
+                "complaint_id": safe_str(row.get("Complaint ID") or row.get("complaint_id")),
+                "product_category": safe_str(row.get("product_category")),
+                "product": safe_str(row.get("Product") or row.get("product")),
+                "issue": safe_str(row.get("Issue") or row.get("issue")),
+                "chunk_index": int(idx),
+                "total_chunks": int(total),
+            }
+
             chunks.append({
                 "id": chunk_id,
                 "text": part,
-                "metadata": {
-                    "complaint_id": row.get("Complaint ID") or row.get("complaint_id"),
-                    "product_category": row.get("product_category"),
-                    "product": row.get("Product") or row.get("product"),
-                    "issue": row.get("Issue") or row.get("issue"),
-                    "chunk_index": idx,
-                    "total_chunks": total,
-                }
+                "metadata": metadata,
             })
     return chunks
 
