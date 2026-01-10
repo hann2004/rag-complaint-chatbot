@@ -66,22 +66,26 @@ def retrieve_top_k(question: str, k: int = 5) -> Tuple[List[str], List[Dict], Li
 
 
 def build_prompt(context_chunks: List[str], question: str) -> str:
-    context = "\n\n".join(context_chunks)
+    # Truncate each chunk to keep within model context limits
+    truncated = [chunk[:500] for chunk in context_chunks]
+    numbered = [f"[{i+1}] {chunk}" for i, chunk in enumerate(truncated)]
+    context = "\n\n".join(numbered)
     template = (
         "You are a financial analyst assistant for CrediTrust. "
-        "Your task is to answer questions about customer complaints. "
-        "Use the following retrieved complaint excerpts to formulate your answer. "
-        "If the context doesn't contain the answer, state that you don't have enough information.\n\n"
+        "Use ONLY the provided complaint excerpts to answer. "
+        "Respond concisely in 2-4 sentences. "
+        "If the context lacks the answer, say you don't have enough information. "
+        "Cite sources using their bracket numbers and include complaint_id when possible.\n\n"
         f"Context:\n{context}\n\n"
         f"Question: {question}\n\n"
-        "Answer:"
+        "Answer (with source numbers):"
     )
     return template
 
 
 def generate_answer(prompt: str, model_name: str | None = None) -> str:
-    # Prefer an instruction-tuned small model when not specified
-    default_model = "google/flan-t5-small"
+    # Prefer a small instruction-tuned chat model when not specified
+    default_model = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     model_name = model_name or os.environ.get("RAG_LLM_MODEL", default_model)
 
     # Choose pipeline type based on model; FLAN-T5 uses text2text-generation
@@ -89,11 +93,11 @@ def generate_answer(prompt: str, model_name: str | None = None) -> str:
     gen = pipeline(task, model=model_name)
 
     if task == "text2text-generation":
-        out = gen(prompt, max_new_tokens=256)
+        out = gen(prompt, max_new_tokens=128)
         text = out[0]["generated_text"].strip()
         return text
     else:
-        out = gen(prompt, max_new_tokens=256, temperature=0.7, do_sample=True)
+        out = gen(prompt, max_new_tokens=128, temperature=0.3, do_sample=True)
         text = out[0]["generated_text"]
         if text.startswith(prompt):
             return text[len(prompt):].strip()
@@ -102,17 +106,11 @@ def generate_answer(prompt: str, model_name: str | None = None) -> str:
 
 def answer_question(question: str, k: int = 5, model_name: str | None = None) -> Dict:
     docs, metas, dists = retrieve_top_k(question, k=k)
-    # Simple guardrail: if no docs or best distance is weak, abstain
     if not docs:
         answer = "I don't have enough information to answer from the context."
     else:
-        best_dist = dists[0] if dists else None
-        weak = best_dist is not None and best_dist > 0.6  # heuristic distance threshold
-        if weak:
-            answer = "I don't have enough information to answer from the context."
-        else:
-            prompt = build_prompt(docs, question)
-            answer = generate_answer(prompt, model_name=model_name)
+        prompt = build_prompt(docs, question)
+        answer = generate_answer(prompt, model_name=model_name)
 
     retrieved = [
         {"text": docs[i], "metadata": metas[i], "distance": dists[i]}
@@ -121,11 +119,11 @@ def answer_question(question: str, k: int = 5, model_name: str | None = None) ->
 
     # Append brief citations (top 2) to the answer
     citations = []
-    for r in retrieved[:2]:
+    for idx, r in enumerate(retrieved[:2], start=1):
         m = r.get("metadata", {}) or {}
         cid = m.get("complaint_id", "-")
         cat = m.get("product_category", "-")
-        citations.append(f"[{cat}] complaint_id={cid}")
+        citations.append(f"[{idx}] {cat}, complaint_id={cid}")
     if citations:
         answer = answer + "\n\nCitations: " + "; ".join(citations)
 
