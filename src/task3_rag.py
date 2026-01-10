@@ -66,16 +66,17 @@ def retrieve_top_k(question: str, k: int = 5) -> Tuple[List[str], List[Dict], Li
 
 
 def build_prompt(context_chunks: List[str], question: str) -> str:
-    # Truncate each chunk to keep within model context limits
-    truncated = [chunk[:500] for chunk in context_chunks]
+    # Limit to top 2 chunks and truncate to keep within model context limits
+    truncated = [chunk[:300] for chunk in context_chunks[:2]]
     numbered = [f"[{i+1}] {chunk}" for i, chunk in enumerate(truncated)]
     context = "\n\n".join(numbered)
     template = (
         "You are a financial analyst assistant for CrediTrust. "
-        "Use ONLY the provided complaint excerpts to answer. "
-        "Respond concisely in 2-4 sentences. "
+        "Answer using ONLY the provided excerpts. "
+        "Write a natural, human-like short paragraph (2-3 sentences). "
+        "Avoid repetition and bullet lists. "
         "If the context lacks the answer, say you don't have enough information. "
-        "Cite sources using their bracket numbers and include complaint_id when possible.\n\n"
+        "Cite sources with their bracket numbers and include complaint_id.\n\n"
         f"Context:\n{context}\n\n"
         f"Question: {question}\n\n"
         "Answer (with source numbers):"
@@ -93,11 +94,18 @@ def generate_answer(prompt: str, model_name: str | None = None) -> str:
     gen = pipeline(task, model=model_name)
 
     if task == "text2text-generation":
-        out = gen(prompt, max_new_tokens=128)
+        out = gen(prompt, max_new_tokens=96)
         text = out[0]["generated_text"].strip()
         return text
     else:
-        out = gen(prompt, max_new_tokens=128, temperature=0.3, do_sample=True)
+        out = gen(
+            prompt,
+            max_new_tokens=96,
+            temperature=0.1,
+            top_p=0.9,
+            do_sample=True,
+            repetition_penalty=1.1,
+        )
         text = out[0]["generated_text"]
         if text.startswith(prompt):
             return text[len(prompt):].strip()
@@ -148,7 +156,7 @@ def _md_escape(text: str) -> str:
 
 def run_evaluation(
     questions: List[str] | None = None,
-    k: int = 5,
+    k: int = 2,
     model_name: str | None = None,
     output_path: Path | None = None,
 ) -> Path:
