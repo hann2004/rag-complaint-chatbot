@@ -12,6 +12,8 @@ sentence-transformers
 langchain-text-splitters
 progressbar2
 pytest
+transformers
+sentencepiece
 
 # UI options
 streamlit
